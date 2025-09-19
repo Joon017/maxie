@@ -1,0 +1,22 @@
+{
+  "0bc1700d-9aec-4194-ba13-634e13df3390": {
+    "id": "0bc1700d-9aec-4194-ba13-634e13df3390",
+    "title": "testing task",
+    "details": "test",
+    "status": "planned",
+    "date": "2025-09-09",
+    "due_at": null,
+    "committed_at": "2025-09-18T15:00:32.202237",
+    "updated_at": "2025-09-18T15:00:32.202237"
+  },
+  "9711d5f8-e158-430b-a6fb-c8a1c191eb7e": {
+    "id": "9711d5f8-e158-430b-a6fb-c8a1c191eb7e",
+    "title": "ccc",
+    "details": "",
+    "status": "planned",
+    "date": "2025-09-09",
+    "due_at": null,
+    "committed_at": "2025-09-18T15:06:58.913287",
+    "updated_at": "2025-09-18T15:06:58.913287"
+  }
+}
