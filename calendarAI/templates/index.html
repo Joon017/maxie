@@ -1,0 +1,1236 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Clean Calendar + AI Assistant</title>
+  <!-- <link rel="stylesheet" href="{{ url_for('static', filename='css/calendar.css') }}"> -->
+  <style>
+    body, html {
+      margin: 0;
+      padding: 0;
+      height: 100%;
+      font-family: Arial, sans-serif;
+      overflow: hidden; /* prevent whole page scroll */
+    }
+
+    .container {
+      display: flex;
+      height: 100vh;
+      width: 100%;
+    }
+
+    /* Calendar on the left */
+    .calendar-container {
+      flex: 2; /* ~65–70% */
+      padding: 10px;
+      overflow-y: auto;
+      border-right: 1px solid #ddd;
+    }
+
+    /* Assistant on the right */
+    .assistant-container {
+      flex: 1; /* ~30–35% */
+      display: flex;
+      flex-direction: column;
+      height: 100%;
+    }
+
+    .assistant-header {
+      padding: 10px;
+      background: #f9f9f9;
+      border-bottom: 1px solid #ddd;
+      font-weight: bold;
+    }
+
+    .chat-messages {
+      flex: 1;
+      overflow-y: auto;
+      padding: 10px;
+      background: #fff;
+    }
+
+    .chat-input {
+      display: flex;
+      border-top: 1px solid #ddd;
+      padding: 10px;
+      background: #fafafa;
+    }
+
+    .chat-input input {
+      flex: 1;
+      padding: 8px;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+      margin-right: 8px;
+    }
+
+    .chat-input button {
+      padding: 8px 12px;
+      border: none;
+      background: #007bff;
+      color: #fff;
+      border-radius: 4px;
+      cursor: pointer;
+    }
+
+    .chat-input button:hover {
+      background: #0056b3;
+    }
+
+    /* Message styling */
+    .message {
+      margin-bottom: 10px;
+      max-width: 80%;
+      padding: 8px 12px;
+      border-radius: 12px;
+      line-height: 1.4;
+    }
+    .user {
+      background: #007bff;
+      color: white;
+      margin-left: auto;
+      border-bottom-right-radius: 2px;
+    }
+    .ai {
+      background: #f1f0f0;
+      color: #000;
+      margin-right: auto;
+      border-bottom-left-radius: 2px;
+    }
+
+    .message.ai.verbose {
+      background: #e8f4ff;         /* light blue */
+      border: 1px solid #cfe6ff;
+    }
+
+
+.execution-step {
+  display: grid;
+  grid-template-columns: 22px 1fr;
+  gap: 8px;
+  align-items: start;
+  padding: 6px 0;
+  border-bottom: 1px dashed #eee;
+}
+.execution-step .status { width: 22px; height: 22px; display: flex; align-items: center; justify-content: center; }
+.execution-step .check { font-weight: bold; }
+.execution-step .error { color: #b00020; font-weight: bold; }
+.execution-step .spinner {
+  width: 16px; height: 16px; border: 2px solid #ccc; border-top-color: #007bff; border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+.execution-step .output {
+  display: none;
+  background: #fafafa;
+  border: 1px solid #eee;
+  padding: 8px;
+  grid-column: 1 / span 2;
+  max-height: 240px;
+  overflow: auto;
+  margin: 6px 0 0 0;
+}
+.execution-step.expanded .output { display: block; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+
+  @keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+  }
+
+/* Tabs (keep these) */
+.tabbar { display:flex; gap:6px; }
+.tab { background:#f1f1f1; border:1px solid #ddd; padding:6px 10px; border-radius:8px; cursor:pointer; }
+.tab.active { background:#007bff; color:#fff; border-color:#007bff; }
+
+.policy-subtabs { display:flex; gap:6px; margin-bottom:8px; }
+.subtab { background:#f7f7f7; border:1px solid #ddd; padding:6px 10px; border-radius:8px; cursor:pointer; }
+.subtab.active { background:#333; color:#fff; }
+
+/* ------------------ Policy Studio: compact UI ------------------ */
+:root{
+  --ps-font: 12.5px;
+  --ps-muted:#6b7280;
+  --ps-chip-bg:#f3f4f6;
+  --ps-chip:#374151;
+  --ps-accent:#0ea5e9;
+}
+
+/* Scope all compact styles to the Policy panel you already have */
+#panel-policies { font-size: var(--ps-font); }
+#panel-policies .toolbar { display:flex; gap:8px; align-items:center; margin:8px 0; }
+#panel-policies .mini-input,
+#panel-policies input[type="search"] { font-size: var(--ps-font); padding:6px 8px; width:260px; }
+#panel-policies button, 
+#panel-policies select { font-size: var(--ps-font); padding:6px 10px; border:1px solid #ddd; background:#fff; border-radius:6px; cursor:pointer; }
+#panel-policies button:hover { background:#f7f7f7; }
+
+/* List container (reuse your existing .policy-list element) */
+#panel-policies .policy-list { display:flex; flex-direction:column; gap:8px; }
+
+/* Card layout per policy */
+.ps-card{
+  border:1px solid #e5e7eb; border-radius:10px; background:#fff;
+  padding:10px 12px;
+}
+.ps-row{ display:grid; grid-template-columns: 1.3fr .8fr 1.1fr 1.2fr .35fr .35fr; gap:10px; align-items:center; }
+.ps-name{ font-weight:600; }
+.ps-muted{ color:var(--ps-muted); }
+.ps-badge{ font-weight:600; text-align:right; }
+
+/* Chips and toggles */
+.ps-chips{ display:flex; gap:6px; flex-wrap:wrap; }
+.ps-chip{
+  background:var(--ps-chip-bg); color:var(--ps-chip);
+  border-radius:999px; padding:2px 8px; line-height:18px;
+}
+.ps-toggle{ color:var(--ps-accent); cursor:pointer; font-weight:600; margin-left:6px; }
+.ps-row .name-line{ display:flex; align-items:center; gap:6px; }
+
+/* Details pane */
+.ps-details{
+  display:none; margin-top:8px; padding-top:8px; border-top:1px dashed #e5e7eb; color:#111827;
+}
+.ps-details .pair{ display:grid; grid-template-columns:120px 1fr; gap:8px; margin:4px 0; }
+.ps-details .label{ color:var(--ps-muted); }
+
+/* Policy Studio compact UI */
+:root{
+  --ps-font: 12px;
+  --ps-muted:#6b7280;
+  --ps-chip-bg:#f3f4f6;
+  --ps-chip:#374151;
+  --ps-accent:#0ea5e9;
+}
+
+#panel-policies { font-size: var(--ps-font); }
+
+/* Subtabs */
+.policy-subtabs { display:flex; gap:6px; margin:8px 0; }
+.subtab {
+  background:#f7f7f7; border:1px solid #ddd; padding:5px 8px; border-radius:8px; cursor:pointer;
+  font-size: var(--ps-font);
+}
+.subtab.active { background:#333; color:#fff; }
+
+/* Policy Chat */
+.ps-chat-messages{
+  flex:1; overflow:auto; background:#fff; border:1px solid #eee; border-radius:8px; padding:10px;
+}
+.ps-chat-footer{
+  display:flex; gap:8px; align-items:center; padding:8px 0;
+}
+.ps-chat-footer input{
+  flex:1; padding:6px 8px; font-size: var(--ps-font);
+  border:1px solid #ccc; border-radius:6px;
+}
+.btn{ font-size: var(--ps-font); padding:6px 10px; border:1px solid #ddd; background:#fff; border-radius:6px; cursor:pointer; }
+.btn.primary{ background:#0ea5e9; color:#fff; border-color:#0ea5e9; }
+
+/* Chat bubbles */
+.ps-msg{ max-width: 92%; margin:8px 0; padding:8px 10px; border-radius:10px; line-height:1.35; }
+.ps-user{ margin-left:auto; background:#007bff; color:#fff; border-bottom-right-radius:2px; }
+.ps-ai{ margin-right:auto; background:#f1f0f0; color:#111; border-bottom-left-radius:2px; }
+
+/* Draft card */
+.ps-draft{ background:#fff; border:1px solid #e5e7eb; border-radius:10px; padding:10px; margin-top:6px; }
+.ps-row{ display:grid; grid-template-columns: 1fr 1fr; gap:8px; }
+.ps-chips{ display:flex; gap:6px; flex-wrap:wrap; }
+.ps-chip{ background:var(--ps-chip-bg); color:var(--ps-chip); border-radius:999px; padding:2px 8px; }
+.ps-writeup{ color:#111; background:#fafafa; border:1px solid #eee; border-radius:6px; padding:8px; margin-top:8px; }
+.ps-actions{ display:flex; gap:8px; margin-top:8px; }
+.ps-small{ color:var(--ps-muted); font-size: 11px; }
+
+
+  </style>
+</head>
+<body>
+  <div class="container">
+    <!-- Left side calendar -->
+    <div class="calendar-container">
+      <h2>Calendar goes here</h2>
+      <!-- Replace this with your actual calendar HTML -->
+      <div id="calendar"></div>
+    </div>
+
+    <!-- Right side assistant -->
+    <div class="assistant-container">
+      <!-- <div class="assistant-header">Assistant</div> -->
+       <div class="assistant-header">
+  <div class="tabbar">
+    <button class="tab active" data-tab="assistant">Assistant</button>
+    <button class="tab" data-tab="policies">Policy Studio</button>
+  </div>
+</div>
+
+<!-- Assistant panel (unchanged UI) -->
+<div class="panel" id="panel-assistant" style="display:flex; flex-direction:column; height:100%;">
+  <div class="chat-messages" id="chatMessages"></div>
+  <div class="chat-input">
+    <input type="text" id="userInput" placeholder="Type a message...">
+    <button id="sendBtn">Send</button>
+  </div>
+</div>
+
+<!-- Policy Studio panel (new) -->
+<div class="panel" id="panel-policies" style="display:none; height:100%; overflow:auto; padding:10px;">
+  <!-- Subtabs (ensure Chat is first & active) -->
+<!-- <div class="policy-subtabs">
+  <button class="subtab active" data-sub="pchat">Chat</button>
+  <button class="subtab" data-sub="library">Library</button>
+  <button class="subtab" data-sub="compose">Compose</button>
+  <button class="subtab" data-sub="sim">Simulator</button>
+</div> -->
+
+<!-- Policy Chat -->
+<div class="policy-view" id="policy-chat" style="display:block; height:100%; display:flex; flex-direction:column;">
+  <div class="ps-chat-messages" id="policyChatMessages"></div>
+
+  <div class="ps-chat-footer">
+    <button id="btnOpenLibrary" class="btn">View Library</button>
+    <input id="policyChatInput" type="text" placeholder="Describe a policy, e.g. ‘Don’t move my workouts on weekdays 06–10’">
+    <button id="policyChatSend" class="btn primary">Send</button>
+  </div>
+</div>
+
+  <!-- Library -->
+  <div class="policy-view" id="policy-library">
+    <div class="toolbar">
+      <input id="policySearch" class="mini-input" placeholder="Search policies…">
+      <button id="btnPolicyRefresh">Refresh</button>
+      <button id="btnPolicyNew">New policy</button>
+    </div>
+    <div id="policyList" class="policy-list"></div>
+  </div>
+
+  <!-- Compose (placeholder) -->
+  <div class="policy-view" id="policy-compose" style="display:none;">
+    <p style="margin-top:6px;">Describe a rule (e.g., “Never reschedule my workouts”).</p>
+    <textarea id="policyComposeText" rows="6" style="width:100%;"></textarea>
+    <div style="margin-top:8px;">
+      <button id="btnComposeGenerate">Generate draft</button>
+      <button id="btnComposeSave">Save</button>
+    </div>
+    <pre id="policyComposeDraft" style="background:#fafafa;border:1px solid #eee;padding:8px;margin-top:8px;"></pre>
+  </div>
+
+  <!-- Simulator (placeholder) -->
+  <div class="policy-view" id="policy-sim" style="display:none;">
+    <div class="toolbar">
+      <select id="simAction">
+        <option value="create_event">Create event</option>
+        <option value="reschedule_event">Reschedule event</option>
+        <option value="delete_event">Delete event</option>
+      </select>
+      <button id="btnRunSim">Run</button>
+    </div>
+    <textarea id="simContext" rows="6" style="width:100%;">{
+  "title": "Swim lesson with Jamie",
+  "layer": "work",
+  "start_time": "2025-10-07T08:30:00",
+  "end_time": "2025-10-07T09:15:00",
+  "tags": ["client","coaching"]
+}</textarea>
+    <pre id="simResult" style="background:#fafafa;border:1px solid #eee;padding:8px;margin-top:8px;"></pre>
+  </div>
+</div>
+      <!-- <div class="chat-messages" id="chatMessages"></div>
+      <div class="chat-input">
+        <input type="text" id="userInput" placeholder="Type a message...">
+        <button id="sendBtn">Send</button>
+      </div> -->
+    </div>
+  </div>
+
+
+<script>
+  const messagesDiv = document.getElementById("chatMessages");
+  const userInput   = document.getElementById("userInput");
+  const sendBtn     = document.getElementById("sendBtn");
+
+  let sessionId = null;
+  let execEvtSource = null;   // keep one live SSE connection at a time
+
+  // ---------- Chat utilities ----------
+  // 4th param = extraClass (e.g., "verbose")
+  function appendMessage(text, sender, isAdmin = false, extraClass = "") {
+    const msg = document.createElement("div");
+    msg.classList.add("message", sender);
+    if (extraClass) msg.classList.add(extraClass);
+
+    if (isAdmin && typeof text === "object" && text !== null) {
+      msg.innerHTML = `
+        🤖 <b>[Plan]</b><br>
+        <pre style="white-space:pre-wrap;margin:6px 0 0 0;">${JSON.stringify(text, null, 2)}</pre>
+      `;
+    } else if (typeof text === "object") {
+      // For small structured previews
+      msg.innerHTML = `<pre style="white-space:pre-wrap;margin:0;">${JSON.stringify(text, null, 2)}</pre>`;
+    } else {
+      msg.textContent = String(text || "");
+    }
+
+    messagesDiv.appendChild(msg);
+    messagesDiv.scrollTop = messagesDiv.scrollHeight;
+  }
+
+  // ---------- L4 batch results renderer ----------
+  function renderL4Results(l4) {
+    if (!l4 || !Array.isArray(l4.results)) return;
+
+    for (const item of l4.results) {
+      if (!item || typeof item !== "object") continue;
+      const { action, status, output, error } = item;
+
+      if (action === "summarize_day" && output && Array.isArray(output.events)) {
+        const card = document.createElement("div");
+        card.className = "message ai";
+        const lines = output.events.map(e => {
+          const time = e.start ? ` at ${e.start}` : "";
+          const end  = e.end ? `–${e.end}` : "";
+          return `• ${e.title}${time}${end}`;
+        }).join("<br>");
+        const dateLabel = (output.summary && output.summary.match(/\d{4}-\d{2}-\d{2}/))
+          ? output.summary.match(/\d{4}-\d{2}-\d{2}/)[0]
+          : "Summary";
+        card.innerHTML = `<b>${dateLabel}</b><br>${lines || "No events."}`;
+        messagesDiv.appendChild(card);
+      }
+
+      if (action === "fetch_events" && output && Array.isArray(output.events)) {
+        const card = document.createElement("div");
+        card.className = "message ai";
+        const lines = output.events.map(e => `• ${e.title} — ${e.start}${e.end ? " to " + e.end : ""}`).join("<br>");
+        card.innerHTML = `<b>Events</b><br>${lines || "No matching events."}`;
+        messagesDiv.appendChild(card);
+      }
+
+      // Accept either free_slots or slots
+      if (action === "get_free_slots" && output && (Array.isArray(output.free_slots) || Array.isArray(output.slots))) {
+        const slots = output.free_slots || output.slots || [];
+        const card = document.createElement("div");
+        card.className = "message ai";
+        const lines = slots.map(s => `• ${s.start}–${s.end}`).join("<br>");
+        card.innerHTML = `<b>Available slots</b><br>${lines || "No free slots found."}`;
+        messagesDiv.appendChild(card);
+      }
+
+      if (status === "error" || error) {
+        appendMessage(`⚠️ ${error || "Action failed."}`, "ai");
+      }
+    }
+    messagesDiv.scrollTop = messagesDiv.scrollHeight;
+  }
+
+  // ---------- Confirmation Card ----------
+  function renderConfirmation(conf) {
+    if (!conf) return;
+    const card = document.createElement("div");
+    card.className = "message ai";
+    card.style.border = "1px solid #ddd";
+    card.style.background = "#fff";
+    card.style.padding = "10px";
+
+    const writes = Array.isArray(conf.writes) ? conf.writes : [];
+    const writesHtml = writes.length
+      ? `<pre style="white-space:pre-wrap;margin:8px 0 10px 0;">${JSON.stringify(writes, null, 2)}</pre>`
+      : "<div style='margin:8px 0 10px 0;'>No pending changes.</div>";
+
+    card.innerHTML = `
+      <div><b>Confirm changes?</b></div>
+      <div style="margin-top:6px;">${conf.message || "Proceed with these updates?"}</div>
+      ${writesHtml}
+      <div style="margin-top:10px; display:flex; gap:8px;">
+        <button id="confirmBtn" style="padding:6px 10px; background:#007bff; color:#fff; border:none; border-radius:4px; cursor:pointer;">Confirm</button>
+        <button id="cancelBtn" style="padding:6px 10px; background:#eee; color:#333; border:1px solid #ccc; border-radius:4px; cursor:pointer;">Cancel</button>
+      </div>
+    `;
+    messagesDiv.appendChild(card);
+    messagesDiv.scrollTop = messagesDiv.scrollHeight;
+
+    const confirmBtn = card.querySelector("#confirmBtn");
+    const cancelBtn  = card.querySelector("#cancelBtn");
+
+    confirmBtn.onclick = async () => {
+      confirmBtn.disabled = true;
+      cancelBtn.disabled = true;
+      startExecutionStream(sessionId);
+      try {
+        const res = await fetch("/confirm_actions", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ session_id: sessionId, confirmed: true, writes })
+        });
+        if (!res.ok) appendMessage("⚠️ Failed to confirm changes.", "ai");
+      } catch (e) {
+        console.error(e);
+        appendMessage("⚠️ Failed to confirm changes.", "ai");
+      }
+    };
+
+    cancelBtn.onclick = async () => {
+      confirmBtn.disabled = true;
+      cancelBtn.disabled = true;
+      appendMessage("Okay — I won’t apply those changes.", "ai", false, "verbose");
+      try {
+        await fetch("/confirm_actions", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ session_id: sessionId, confirmed: false, writes })
+        });
+      } catch (e) {
+        console.error(e);
+      }
+    };
+  }
+
+  // ---------- Execution Trace (live over SSE) ----------
+  function startExecutionStream(sessionId) {
+    if (execEvtSource) {
+      try { execEvtSource.close(); } catch {}
+      execEvtSource = null;
+    }
+    execEvtSource = new EventSource(`/execute_plan_stream?session_id=${encodeURIComponent(sessionId)}`);
+
+    const container = document.createElement("div");
+    container.className = "message ai";
+    container.innerHTML = `<b>Execution Steps</b>`;
+    messagesDiv.appendChild(container);
+
+    execEvtSource.addEventListener("start", () => {});
+
+    execEvtSource.onmessage = (event) => {
+      try {
+        const payload = JSON.parse(event.data);
+        if (payload.kind === "trace_update" && payload.step) {
+          updateStepUI(container, payload.step);
+        } else if (payload.kind === "final_reply" && payload.text) {
+          appendMessage(payload.text, "ai", false, "verbose");
+        } else if (payload.kind === "results" && payload.layer4_results) {
+          renderL4Results(payload.layer4_results);
+        }
+      } catch (e) {
+        console.warn("Non-JSON SSE message:", event.data);
+      }
+    };
+
+    execEvtSource.addEventListener("end", () => {
+      try { execEvtSource.close(); } catch {}
+      execEvtSource = null;
+      appendMessage("✅ All steps finished.", "ai");
+    });
+
+    execEvtSource.onerror = (err) => {
+      console.error("SSE error:", err);
+      try { execEvtSource.close(); } catch {}
+      execEvtSource = null;
+      appendMessage("⚠️ Execution stream ended unexpectedly.", "ai");
+    };
+  }
+
+  function updateStepUI(container, step) {
+    let row = container.querySelector(`[data-id="${step.id}"]`);
+    if (!row) {
+      row = document.createElement("div");
+      row.className = "execution-step";
+      row.dataset.id = step.id;
+      row.innerHTML = `
+        <div class="status"></div>
+        <div class="label">${step.label || step.id}</div>
+      `;
+      container.appendChild(row);
+
+      if (step.type === "read") {
+        const outputEl = document.createElement("pre");
+        outputEl.className = "output";
+        row.appendChild(outputEl);
+        row.style.cursor = "pointer";
+        row.onclick = () => row.classList.toggle("expanded");
+      }
+    }
+
+    const statusEl = row.querySelector(".status");
+    if (step.status === "in_progress") {
+      statusEl.innerHTML = `<div class="spinner"></div>`;
+    } else if (step.status === "completed") {
+      statusEl.innerHTML = `<div class="check">✔</div>`;
+      if (step.output && row.querySelector(".output")) {
+        row.querySelector(".output").textContent = JSON.stringify(step.output, null, 2);
+      }
+    } else if (step.status === "error") {
+      statusEl.innerHTML = `<div class="error">⚠</div>`;
+      if (step.output && row.querySelector(".output")) {
+        row.querySelector(".output").textContent = JSON.stringify(step.output, null, 2);
+      }
+    }
+    messagesDiv.scrollTop = messagesDiv.scrollHeight;
+  }
+
+  // Render a finished trace (no streaming) so users still see the checklist
+  function renderExecutionTraceSnapshot(trace) {
+    if (!trace || !Array.isArray(trace) || !trace.length) return;
+    const container = document.createElement("div");
+    container.className = "message ai";
+    container.innerHTML = `<b>Execution Steps</b>`;
+    messagesDiv.appendChild(container);
+    trace.forEach(step => updateStepUI(container, step));
+  }
+
+  // ---------- Send user message ----------
+// ---------- Send user message ----------
+async function sendMessage() {
+  const text = userInput.value.trim();
+  if (!text) return;
+
+  appendMessage(text, "user");
+  userInput.value = "";
+  userInput.disabled = true;
+  sendBtn.disabled = true;
+
+  try {
+    const res = await fetch("/handle_user_message", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ message: text, session_id: sessionId }),
+    });
+
+    if (!res.ok) {
+      appendMessage("⚠️ Error reaching assistant.", "ai");
+      console.error("HTTP error:", res.status, res.statusText);
+      return;
+    }
+
+    const data = await res.json().catch((e) => {
+      appendMessage("⚠️ Unexpected server response.", "ai");
+      console.error("JSON parse error:", e);
+      return null;
+    });
+    if (!data) return;
+
+    sessionId = data.session_id || sessionId;
+    console.log("Server payload:", data);
+
+    // --- Collect candidate messages in priority order ---
+    const immediate = data.immediate_reply || (data.layer1 && data.layer1.immediate_reply);
+    const planReply = data.layer3_plan && data.layer3_plan.reply_text;
+    const l5Reply   = data.layer5 && data.layer5.final_reply;
+    const l4Reply   = data.layer4_results && data.layer4_results.final_reply;
+    const fallback  = data.reply_text || data.ai_reply || "";
+
+    // Priority: L5 > L4 > L3 plan > immediate > fallback
+    const candidates = [
+      { text: l5Reply,   extra: "verbose" },
+      { text: l4Reply,   extra: "verbose" },
+      { text: planReply, extra: "verbose" },
+      { text: immediate, extra: "verbose" },
+      { text: fallback,  extra: "" }
+    ];
+
+    // --- Deduplicate within this response ---
+    const seen = new Set();
+    const norm = (s) => (typeof s === "string" ? s.trim().replace(/\s+/g, " ").toLowerCase() : "");
+    for (const c of candidates) {
+      if (!c.text) continue;
+      const key = norm(c.text);
+      if (!key || seen.has(key)) continue;
+      appendMessage(c.text, "ai", false, c.extra);
+      seen.add(key);
+      // If we just printed a high-priority final reply (L5/L4), usually we don't want the lower ones.
+      if (c.text === l5Reply || c.text === l4Reply) break;
+    }
+
+    // Debug plan (unchanged)
+    if (data.layer3_plan) appendMessage(data.layer3_plan, "ai", true);
+
+    // Streaming (auto confirm path)
+    if (data.start_stream) startExecutionStream(sessionId);
+
+    // Confirmation from L3 or L4
+    if (data.layer3_plan && data.layer3_plan.confirmation_required && Array.isArray(data.layer3_plan.proposed_writes) && data.layer3_plan.proposed_writes.length) {
+      renderConfirmation({ message: "Confirm these changes?", writes: data.layer3_plan.proposed_writes });
+    }
+    if (data.layer4_results && data.layer4_results.confirmation) {
+      renderConfirmation({
+        message: data.layer4_results.confirmation.message,
+        writes: data.layer4_results.confirmation.proposed_actions || []
+      });
+    }
+
+    // Finished trace snapshot + structured results
+    if (data.layer4_results && data.layer4_results.execution_trace) {
+      renderExecutionTraceSnapshot(data.layer4_results.execution_trace);
+    }
+    if (data.layer4_results) {
+      renderL4Results(data.layer4_results);
+    }
+
+    // L5 next actions (verbose, dedup-safe relative to above)
+    if (data.layer5 && Array.isArray(data.layer5.next_actions) && data.layer5.next_actions.length) {
+      const nxt = "👉 Suggested next actions: " + data.layer5.next_actions.join(", ");
+      const key = norm(nxt);
+      if (!seen.has(key)) appendMessage(nxt, "ai", false, "verbose");
+    }
+
+  } catch (err) {
+    console.error("Network error:", err);
+    appendMessage("⚠️ Error reaching assistant.", "ai");
+  } finally {
+    userInput.disabled = false;
+    sendBtn.disabled = false;
+    userInput.focus();
+  }
+}
+
+  sendBtn.addEventListener("click", sendMessage);
+  userInput.addEventListener("keypress", (e) => {
+    if (e.key === "Enter") sendMessage();
+  });
+</script>
+
+<script>
+/* ===========================================
+   TOP-LEVEL TABS (Assistant / Policy Studio)
+   =========================================== */
+document.querySelectorAll(".tabbar .tab").forEach(btn => {
+  btn.onclick = () => {
+    document.querySelectorAll(".tabbar .tab").forEach(b => b.classList.remove("active"));
+    btn.classList.add("active");
+    const t = btn.dataset.tab;
+    document.getElementById("panel-assistant").style.display = (t === "assistant") ? "flex" : "none";
+    document.getElementById("panel-policies").style.display  = (t === "policies")  ? "block" : "none";
+    if (t === "policies") {
+      // default subtab stays whatever is active; when Library visible, refresh it
+      const activeSub = document.querySelector(".policy-subtabs .subtab.active")?.dataset.sub;
+      if (activeSub === "library") renderPolicyList();
+    }
+  };
+});
+
+/* ===========================================
+   POLICY STUDIO SUBTABS (Chat / Library / Compose / Sim)
+   =========================================== */
+const policyViews = {
+  pchat:   document.getElementById("policy-chat"),
+  library: document.getElementById("policy-library"),
+  compose: document.getElementById("policy-compose"),
+  sim:     document.getElementById("policy-sim"),
+};
+
+document.querySelectorAll(".policy-subtabs .subtab").forEach(btn => {
+  btn.onclick = () => {
+    document.querySelectorAll(".policy-subtabs .subtab").forEach(b => b.classList.remove("active"));
+    btn.classList.add("active");
+    const sub = btn.dataset.sub;
+    Object.entries(policyViews).forEach(([k, el]) => {
+      el.style.display = (k === sub ? (k === "pchat" ? "flex" : "block") : "none");
+    });
+    if (sub === "library") renderPolicyList();
+  };
+});
+
+// Quick jump Library button from Chat footer
+document.getElementById("btnOpenLibrary")?.addEventListener("click", () => {
+  document.querySelector('.policy-subtabs .subtab[data-sub="library"]').click();
+});
+
+/* ===========================================
+   POLICY DATA (local stub; backend will overwrite via GET /policies)
+   =========================================== */
+const DAY_NAMES = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
+let POLICIES = [
+  {
+    id:"p1",
+    name:"Protect workouts",
+    type:"hard",
+    scope:"personal",
+    entities:[], tags:["health","workout"],
+    priority:10, enabled:true,
+    description:"Never compromise scheduled workouts. If conflicts arise, suggest moving the other event first.",
+    specifics:"Applies to any event tagged #workout or containing ‘Gym’, ‘Run’, ‘Swim’.",
+    timeframe:{ mode:"always" }
+  },
+  {
+    id:"p2",
+    name:"No meetings before 09:00 (weekdays)",
+    type:"soft",
+    scope:"work",
+    entities:[], tags:["time"],
+    priority:20, enabled:true,
+    description:"Avoid scheduling work meetings before 09:00 on weekdays.",
+    specifics:"If unavoidable, ask for explicit confirmation and propose the first slot ≥ 09:00.",
+    timeframe:{ mode:"dow_window", daily_start:"09:00", daily_end:"23:00", days:[1,2,3,4,5] }
+  },
+  {
+    id:"p3",
+    name:"Swim clients prefer late afternoon",
+    type:"info",
+    scope:"entity",
+    entities:["client:alex","client:sam"], tags:["client","preference"],
+    priority:50, enabled:true,
+    description:"When booking with Alex or Sam, prefer 16:00–19:00 windows.",
+    specifics:"If pool lanes are full, suggest 19:00–20:00 as fallback.",
+    timeframe:{ mode:"daily_window", daily_start:"16:00", daily_end:"19:00" }
+  }
+];
+
+/* ===========================================
+   HELPERS
+   =========================================== */
+function chip(t){ return `<span class="ps-chip">${t}</span>`; }
+
+function formatTimeframe(tf){
+  if(!tf || tf.mode==="always") return "Ongoing";
+  if(tf.mode==="date_window")  return `From ${tf.date_start} to ${tf.date_end}`;
+  if(tf.mode==="daily_window") return `Daily • ${tf.daily_start}–${tf.daily_end}`;
+  if(tf.mode==="dow_window") {
+    const days=(tf.days||[]).map(i=>DAY_NAMES[i]).join(", ");
+    const hrs=(tf.daily_start&&tf.daily_end)?` • ${tf.daily_start}–${tf.daily_end}`:"";
+    return `${days}${hrs}`;
+  }
+  return "—";
+}
+
+async function tryJSON(res){
+  try { return await res.json(); } catch { return null; }
+}
+async function safeFetch(url, opts){
+  try { return await fetch(url, opts); } catch { return null; }
+}
+
+/* ===========================================
+   LIBRARY RENDERER
+   =========================================== */
+async function renderPolicyList(){
+  const list = document.getElementById("policyList");
+  if (!list) return;
+
+  // Try to refresh from backend if available
+  const res = await safeFetch("/policies", { method:"GET" });
+  if (res && res.ok) {
+    const data = await tryJSON(res);
+    if (Array.isArray(data)) POLICIES = data;
+  }
+
+  const q = (document.getElementById("policySearch")?.value || "").trim().toLowerCase();
+  list.innerHTML = "";
+
+  let items = POLICIES.filter(p =>
+    !q ||
+    p.name.toLowerCase().includes(q) ||
+    (p.description||"").toLowerCase().includes(q) ||
+    (p.tags||[]).some(t=>t.toLowerCase().includes(q)) ||
+    (p.entities||[]).some(e=>e.toLowerCase().includes(q))
+  ).sort((a,b)=>a.priority-b.priority);
+
+  for(const p of items){
+    const card = document.createElement("div");
+    card.className = "ps-card";
+
+    const tags = (p.tags||[]).map(chip).join(" ");
+    const ents = (p.entities||[]).map(chip).join(" ");
+    const chipsLeft = [chip(p.type), chip(p.scope)].join(" ") + (ents?(" "+ents):"");
+
+    card.innerHTML = `
+      <div class="ps-row">
+        <div class="ps-name">
+          <span>${p.name}</span>
+          <span class="ps-toggle" data-id="${p.id}">details</span>
+        </div>
+        <div class="ps-chips">${chipsLeft}</div>
+        <div class="ps-muted">${tags}</div>
+        <div class="ps-muted">${formatTimeframe(p.timeframe)}</div>
+        <div class="ps-badge">${p.priority}</div>
+        <label style="text-align:right;">
+          <input type="checkbox" ${p.enabled?"checked":""} data-enable="${p.id}">
+        </label>
+      </div>
+      <div class="ps-details" id="pd-${p.id}">
+        <div class="pair"><div class="label">Description</div><div>${p.description||"—"}</div></div>
+        <div class="pair"><div class="label">Specifics</div><div>${p.specifics||"—"}</div></div>
+        <div class="pair"><div class="label">Timeframe</div><div>${formatTimeframe(p.timeframe)}</div></div>
+        <div class="pair"><div class="label">Entities</div><div>${ents||"—"}</div></div>
+        <div class="pair"><div class="label">Tags</div><div>${tags||"—"}</div></div>
+        <div class="pair"><div class="label">Type/Scope</div><div>${p.type} • ${p.scope}</div></div>
+        <div class="pair"><div class="label">Priority</div><div>${p.priority}</div></div>
+      </div>
+    `;
+    list.appendChild(card);
+  }
+
+  // wires
+  list.querySelectorAll(".ps-toggle").forEach(t=>{
+    t.onclick = () => {
+      const pane = document.getElementById(`pd-${t.dataset.id}`);
+      const show = pane.style.display !== "block";
+      pane.style.display = show ? "block" : "none";
+      t.textContent = show ? "hide" : "details";
+    };
+  });
+
+  list.querySelectorAll("input[data-enable]").forEach(chk=>{
+    chk.onchange = async () => {
+      const id = chk.dataset.enable;
+      const p = POLICIES.find(x=>x.id===id);
+      if (!p) return;
+      p.enabled = chk.checked;
+
+      // persist to backend if available
+      const res = await safeFetch(`/policies/${encodeURIComponent(id)}`, {
+        method:"PATCH",
+        headers:{ "Content-Type":"application/json" },
+        body: JSON.stringify({ enabled: p.enabled })
+      });
+      // ignore failures silently to keep UI snappy
+    };
+  });
+}
+
+// Toolbar actions
+document.getElementById("policySearch")?.addEventListener("input", renderPolicyList);
+document.getElementById("btnPolicyRefresh")?.addEventListener("click", renderPolicyList);
+document.getElementById("btnPolicyNew")?.addEventListener("click", () => {
+  document.querySelector('.policy-subtabs .subtab[data-sub="compose"]').click();
+});
+
+/* ===========================================
+   COMPOSE (placeholders, still useful)
+   =========================================== */
+document.getElementById("btnComposeGenerate")?.addEventListener("click", ()=>{
+  const txt = document.getElementById("policyComposeText").value.trim();
+  const draft = {
+    name: txt.slice(0, 60) || "Untitled policy",
+    type: "soft",
+    scope: "global",
+    description: txt || "User-stated rule.",
+    specifics: "Fill in concrete conditions, tags, and timeframe.",
+    timeframe: { mode: "always" },
+    priority: 50, enabled: true, tags: []
+  };
+  document.getElementById("policyComposeDraft").textContent = JSON.stringify(draft, null, 2);
+});
+
+document.getElementById("btnComposeSave")?.addEventListener("click", async ()=>{
+  const raw = document.getElementById("policyComposeDraft").textContent.trim();
+  if(!raw) return alert("Generate a draft first.");
+  try {
+    const p = JSON.parse(raw);
+    // Save to backend if available
+    const res = await safeFetch("/policies", {
+      method:"POST", headers:{ "Content-Type":"application/json" },
+      body: JSON.stringify(p)
+    });
+    if (res && res.ok) {
+      const saved = await tryJSON(res);
+      p.id = saved?.id || p.id || ("p" + Math.random().toString(36).slice(2,8));
+    } else {
+      // local fallback
+      p.id = p.id || ("p" + Math.random().toString(36).slice(2,8));
+      POLICIES.push(p);
+    }
+    alert("Saved. You’ll see it in the Library.");
+    document.querySelector('.policy-subtabs .subtab[data-sub="library"]').click();
+    renderPolicyList();
+  } catch(e){ alert("Invalid JSON."); }
+});
+
+/* ===========================================
+   SIMULATOR (placeholder; uses backend if present)
+   =========================================== */
+document.getElementById("btnRunSim")?.addEventListener("click", async ()=>{
+  const action = document.getElementById("simAction").value;
+  const ctxRaw = document.getElementById("simContext").value;
+  let payload = { action, context:{} };
+  try { payload.context = JSON.parse(ctxRaw); } catch { /* keep empty */ }
+
+  const res = await safeFetch("/policies/simulate", {
+    method:"POST", headers:{ "Content-Type":"application/json" },
+    body: JSON.stringify(payload)
+  });
+
+  let result;
+  if (res && res.ok) {
+    result = await tryJSON(res);
+  } else {
+    result = {
+      action,
+      considered_policies: POLICIES.filter(p=>p.enabled).map(p=>p.name),
+      outcome: "stub: evaluate on backend"
+    };
+  }
+  document.getElementById("simResult").textContent = JSON.stringify(result, null, 2);
+});
+
+/* ===========================================
+   POLICY CHAT (assistant for policies)
+   =========================================== */
+const pchatMsgs  = document.getElementById("policyChatMessages");
+const pchatInput = document.getElementById("policyChatInput");
+const pchatSend  = document.getElementById("policyChatSend");
+
+function pchatAppend(text, who='ai', html=false){
+  const div = document.createElement("div");
+  div.className = `ps-msg ${who==='user'?'ps-user':'ps-ai'}`;
+  if (html) div.innerHTML = text; else div.textContent = text;
+  pchatMsgs.appendChild(div);
+  pchatMsgs.scrollTop = pchatMsgs.scrollHeight;
+}
+
+function renderPolicyDraftCard(draft){
+  const chips = (arr=[]) => arr.map(s=>`<span class="ps-chip">${s}</span>`).join(' ');
+  const tf = draft.timeframe || {};
+  const tfLine = (() => {
+    switch (tf.kind || tf.mode){
+      case 'ongoing':
+      case 'always': return 'Ongoing';
+      case 'date_range':
+      case 'date_window':  return `${tf.start||tf.date_start} → ${tf.end||tf.date_end}`;
+      case 'weekly': {
+        const days = (tf.days||[]).map(i=>DAY_NAMES[i]).join(', ');
+        return `${days} • ${(tf.start_time||tf.daily_start||'00:00')}–${(tf.end_time||tf.daily_end||'23:59')}`;
+      }
+      case 'daily':
+      case 'daily_window': return `Daily • ${(tf.start_time||tf.daily_start||'00:00')}–${(tf.end_time||tf.daily_end||'23:59')}`;
+      default: return '';
+    }
+  })();
+
+  const html = `
+    <div class="ps-draft">
+      <div style="display:flex; justify-content:space-between; align-items:center;">
+        <div><b>${draft.name || '(unnamed policy)'}</b></div>
+        <div class="ps-small">Priority: <b>${draft.priority ?? '-'}</b></div>
+      </div>
+
+      <div class="ps-row" style="margin-top:6px;">
+        <div>
+          <div class="ps-small">Type</div>
+          <div class="ps-chips">${chips([draft.type])}</div>
+        </div>
+        <div>
+          <div class="ps-small">Scope</div>
+          <div class="ps-chips">${chips(draft.scope ? (Array.isArray(draft.scope)?draft.scope:[draft.scope]) : [])} ${chips((draft.tags||[]).map(t=>`#${t}`))}</div>
+        </div>
+        <div>
+          <div class="ps-small">Conditions</div>
+          <div class="ps-chips">${chips((draft.conditions||[]).map(c=>c.label||c.kind||JSON.stringify(c)))}</div>
+        </div>
+        <div>
+          <div class="ps-small">Timeframe</div>
+          <div>${tfLine || '-'}</div>
+        </div>
+      </div>
+
+      <div class="ps-writeup">${draft.writeup || draft.description || 'No description available.'}</div>
+
+      <div class="ps-actions">
+        <button class="btn primary" data-act="save-enable">Save & enable</button>
+        <button class="btn" data-act="save-disabled">Save disabled</button>
+        <button class="btn" data-act="simulate">Simulate</button>
+        <button class="btn" data-act="edit-json">Edit JSON</button>
+      </div>
+    </div>
+  `;
+  const wrap = document.createElement('div');
+  wrap.className = 'ps-msg ps-ai';
+  wrap.innerHTML = html;
+  pchatMsgs.appendChild(wrap);
+  pchatMsgs.scrollTop = pchatMsgs.scrollHeight;
+
+  wrap.querySelector('[data-act="save-enable"]').onclick = () => savePolicyDraft(draft, true);
+  wrap.querySelector('[data-act="save-disabled"]').onclick = () => savePolicyDraft(draft, false);
+  wrap.querySelector('[data-act="simulate"]').onclick = () => simulatePolicy(draft);
+  wrap.querySelector('[data-act="edit-json"]').onclick = () => {
+    const newJson = prompt('Edit policy JSON:', JSON.stringify(draft, null, 2));
+    if (!newJson) return;
+    try { renderPolicyDraftCard(JSON.parse(newJson)); } catch { pchatAppend('Invalid JSON.', 'ai'); }
+  };
+}
+
+async function savePolicyDraft(draft, enable){
+  try{
+    const res = await safeFetch('/policies', {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({...draft, enabled: !!enable})
+    });
+    if(res && res.ok){
+      const data = await tryJSON(res);
+      pchatAppend(`Saved “${draft.name}” (${enable ? 'enabled' : 'disabled'}).`, 'ai');
+      // force Library refresh next time it's opened
+    } else {
+      // Local fallback
+      draft.id = draft.id || ("p" + Math.random().toString(36).slice(2,8));
+      POLICIES.push(draft);
+      pchatAppend(`Saved locally as “${draft.name}”.`, 'ai');
+    }
+  }catch(e){ pchatAppend('⚠️ Could not save policy.', 'ai'); }
+}
+
+async function simulatePolicy(draft){
+  const context = prompt('Paste an event/action JSON to test (optional):', `{
+  "action": "reschedule_event",
+  "event": { "title":"Workout", "layer":"personal", "start":"2025-10-08T07:30:00", "end":"2025-10-08T08:30:00", "tags":["workout"] }
+}`);
+  try{
+    const res = await safeFetch('/policies/simulate', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ draft, context: context ? JSON.parse(context) : {} })
+    });
+    let data;
+    if (res && res.ok) data = await tryJSON(res);
+    else data = { decision:"unknown", reasons:["No backend; provide /policies/simulate to evaluate."] };
+
+    pchatAppend(
+      `<div class="ps-draft">
+         <div><b>Simulation:</b> decision <b>${data.decision || 'unknown'}</b></div>
+         <div class="ps-small">${(data.reasons||[]).join('<br>') || 'No reasons provided.'}</div>
+       </div>`,
+      'ai', true
+    );
+  }catch(e){ pchatAppend('⚠️ Simulation failed.', 'ai'); }
+}
+
+async function policyChatSend(){
+  const text = pchatInput.value.trim();
+  if(!text) return;
+
+  pchatAppend(text, 'user');
+  pchatInput.value = '';
+  pchatSend.disabled = true;
+
+  try {
+    // One call to orchestrator
+    const res = await safeFetch('/policy/handle', {
+      method:'POST',
+      headers:{ 'Content-Type':'application/json' },
+      body: JSON.stringify({
+        message: text,
+        session_id: window.sessionId || undefined
+      })
+    });
+
+    if (!res || !res.ok) {
+      pchatAppend('⚠️ Error reaching policy engine.', 'ai');
+      return;
+    }
+
+    const data = await tryJSON(res);
+    if (data.session_id) window.sessionId = data.session_id;
+
+    // Priority reply (match your assistant behavior)
+    const reply = data.reply_text
+      || (data.layer3_plan && data.layer3_plan.reply_text)
+      || 'Okay.';
+
+    pchatAppend(reply, 'ai');
+
+    // Show the plan (optional, like your main chat “Plan” card)
+    if (data.layer3_plan) pchatRenderPlanCard(data.layer3_plan);
+
+    // If orchestrator wants confirmation, render a confirm card
+    if (data.confirmation && Array.isArray(data.confirmation.writes)) {
+      pchatRenderConfirmationCard({
+        message: data.confirmation.message || 'Apply these changes?',
+        writes:  data.confirmation.writes
+      });
+    }
+
+    // If write already executed (confirmed:true path), surface results
+    if (data.layer4_results && Array.isArray(data.layer4_results.results)) {
+      const ok = data.layer4_results.status === 'ok';
+      pchatAppend(
+        data.layer4_results.final_reply || (ok ? 'Policy changes applied.' : 'Some policy changes failed.'),
+        'ai'
+      );
+    }
+
+  } catch (e) {
+    console.error(e);
+    pchatAppend('⚠️ Something went wrong crafting the policy.', 'ai');
+  } finally {
+    pchatSend.disabled = false;
+    pchatInput.focus();
+  }
+}
+
+/* ---------- Helpers: plan + confirmation cards ---------- */
+function pchatRenderPlanCard(plan){
+  // Keep it compact; mirrors your assistant “Plan” rendering style
+  const pretty = JSON.stringify(plan, null, 2);
+  const wrap = document.createElement('div');
+  wrap.className = 'message ai';
+  wrap.innerHTML = `
+    🧭 <b>[Policy Plan]</b><br>
+    <pre style="white-space:pre-wrap;margin:6px 0 0 0;">${pretty}</pre>
+  `;
+  document.getElementById('pchatMessages')?.appendChild(wrap);
+  (document.getElementById('pchatMessages')||document).scrollTop = 1e9;
+}
+
+function pchatRenderConfirmationCard(conf){
+  const box = document.createElement('div');
+  box.className = 'message ai';
+  box.style.border = '1px solid #ddd';
+  box.style.background = '#fff';
+  box.style.padding = '10px';
+
+  const writesPretty = JSON.stringify(conf.writes || [], null, 2);
+  box.innerHTML = `
+    <div><b>Confirm policy changes?</b></div>
+    <div style="margin-top:6px;">${conf.message || 'Proceed with these updates?'}</div>
+    <pre style="white-space:pre-wrap;margin:8px 0 10px 0;">${writesPretty}</pre>
+    <div style="margin-top:10px; display:flex; gap:8px;">
+      <button class="pc-confirm" style="padding:6px 10px; background:#007bff; color:#fff; border:none; border-radius:4px; cursor:pointer;">Confirm</button>
+      <button class="pc-cancel"  style="padding:6px 10px; background:#eee; color:#333; border:1px solid #ccc; border-radius:4px; cursor:pointer;">Cancel</button>
+    </div>
+  `;
+  const msgs = document.getElementById('pchatMessages') || document.getElementById('chatMessages');
+  msgs.appendChild(box);
+  msgs.scrollTop = msgs.scrollHeight;
+
+  const confirmBtn = box.querySelector('.pc-confirm');
+  const cancelBtn  = box.querySelector('.pc-cancel');
+
+  confirmBtn.onclick = async () => {
+    confirmBtn.disabled = true; cancelBtn.disabled = true;
+    try {
+      const res = await safeFetch('/policy/handle', {
+        method:'POST',
+        headers:{ 'Content-Type':'application/json' },
+        body: JSON.stringify({
+          session_id: window.sessionId || undefined,
+          confirmed: true,
+          writes: conf.writes   // echo exact writes back for L4
+        })
+      });
+      if (!res || !res.ok) {
+        pchatAppend('⚠️ Failed to apply policy changes.', 'ai');
+        return;
+      }
+      const data = await tryJSON(res);
+      // Mirror server’s final reply
+      const reply = (data.layer4_results && data.layer4_results.final_reply)
+        || data.reply_text
+        || 'Policy changes applied.';
+      pchatAppend(reply, 'ai');
+    } catch (e) {
+      console.error(e);
+      pchatAppend('⚠️ Failed to apply policy changes.', 'ai');
+    }
+  };
+
+  cancelBtn.onclick = () => {
+    confirmBtn.disabled = true; cancelBtn.disabled = true;
+    pchatAppend('Okay — not applying those changes.', 'ai');
+  };
+}
+
+document.getElementById('policyChatSend')?.addEventListener('click', policyChatSend);
+document.getElementById('policyChatInput')?.addEventListener('keypress', (e)=>{
+  if (e.key === 'Enter') policyChatSend();
+});
+</script>
+
+
+</body>
+</html>
